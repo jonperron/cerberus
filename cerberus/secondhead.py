@@ -2,7 +2,6 @@
 
 import os
 import numpy as np
-import tensorflow as tf
 
 from tensorflow.models.research.object_detection.utils import label_map_util
 from tensorflow.models.research.object_detection.utils import visualization_utils as vis_util
@@ -14,7 +13,7 @@ class SecondHead:
 	Uses Tensorflow to find intruders.
 	"""
 	# Load model from tf_models folder
-	CURRENT_DIR = os.path.dirname(os.getcwd())
+	CURRENT_DIR = os.getcwd()
 	
 	# List of the strings used to add correct label for each box
 	LABELS_FILE = os.path.join(CURRENT_DIR, 'lib/python3.5/site-packages/tensorflow/models/research/object_detection/data', 'mscoco_label_map.pbtxt')
@@ -39,7 +38,7 @@ class SecondHead:
 		categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=num_classes, use_display_name=True)
 		category_index = label_map_util.create_category_index(categories)
 		return category_index
-
+	
 	def detect_objects(self, image_np, sess, detection_graph):
 		"""
 		Detect objects using tensorflow session.

@@ -46,8 +46,18 @@ class StorageEngine:
         :param amount: Amount of detection
         :type amount: int.
         """
-        return self.redis_client.get('detection_amount', amount)
+        return self.redis_client.set('detection_amount', amount)
 
+    def get_cerberus_status(self):
+        return self.redis_client.get('guard_status') if self.redis_client.get('guard_status') else 'Unknown'
+        
+    def save_cerberus_status(self, status):
+        """
+        Update states.
+        :param status: Cerberus' status.
+        :type status: str.
+        """
+        return self.redis_client.set('guard_status', status)
 
 class StorageError(Exception):
     """
@@ -59,13 +69,13 @@ class StorageError(Exception):
         raise falcon.HTTPError(falcon.HTTP_418, 'Database error', description)
 
 
-class LastDetection:
+class BaseAPI:
     """
-    Get last detection date or save new detection.
+    Base API template.
     """
     def __init__(self, db):
         self.db = db
-        self.logger = logging.getLogger('lastdetection')
+        self.logger = logging.getLogger('api')
 
     def redis_unavailable(self, exception):
         self.logger.error(exception)
@@ -76,10 +86,17 @@ class LastDetection:
             30
         )
 
+
+class LastDetection(BaseAPI):
+    """
+    Get last detection date or save new detection.
+    """
     def on_get(self, req, resp):
         try:
             last_detection = db.get_last_detection()
             resp.status = falcon.HTTP_200
+            resp.content_type = falcon.MEDIA_JSON
+            resp.media = {"last_detection": last_detection.isoformat()}
         except Exception as e:
             self.redis_unavailable(e)
 
@@ -87,30 +104,58 @@ class LastDetection:
         try:
             last_detection = db.save_last_detection()
             resp.status = falcon.HTTP_200
+            resp.content_type = falcon.MEDIA_JSON
+            resp.media = {"last_detection": "updated"}
         except Exception as e:
             self.redis_unavailable(e)
 
 
-class CountAmountofDetection(LastDetection):
+class CountAmountofDetection(BaseAPI):
     """
     Get or save amount of detection.
     """
     def on_get(self, req, resp):
         try:
-            self.detection_amount = int(self.db.get_detection_amount()) if self.db.get_detection_amount() else 0
-            resp.context['detection_amount'] = 0
+            detection_amount = int(self.db.get_detection_amount()) if self.db.get_detection_amount() else 0
             resp.status = falcon.HTTP_200
+            resp.content_type = falcon.MEDIA_JSON
+            resp.media = {"detections": detection_amount}
         except Exception as e:
             self.redis_unavailable(e)
             
     def on_post(self, req, resp):
         try:
-            self.previous_amount = int(self.db.get_detection_amount()) if self.db.get_detection_amount() else 0
-            self.db.save_detection_amount(self.previous_amount + 1)
+            previous_amount = int(self.db.get_detection_amount()) if self.db.get_detection_amount() else 0
+            self.db.save_detection_amount(previous_amount + 1)
             resp.status = falcon.HTTP_200
+            resp.content_type = falcon.MEDIA_JSON
+            resp.media = {"detections" : "updated"}
         except Exception as e:
             self.redis_unavailable(e)
 
+
+class CerberusStatus(BaseAPI):
+    """
+    Get or save Cerberus status.
+    """
+    def on_get(self, req, resp):
+        try:
+            status = self.db.get_cerberus_status()
+            resp.status = falcon.HTTP_200
+            resp.content_type = falcon.MEDIA_JSON
+            resp.media = {"status": status}
+        except Exception as e:
+            self.redis_unavailable(e)
+            
+    def on_post(self, req, resp):
+        try:
+            status = req.media.get('status', None)
+            self.db.save_cerberus_status(status)
+            resp.status = falcon.HTTP_200
+            resp.content_type = falcon.MEDIA_JSON
+            resp.media = {"status": "updated"}     
+        except Exception as e:
+            self.redis_unavailable(e)
 
 # Falcon App definition
 app = falcon.API()
@@ -118,3 +163,4 @@ db = StorageEngine()
 # Define API routes
 app.add_route('/new_detection', LastDetection(db))
 app.add_route('/detection_amount', CountAmountofDetection(db))
+app.add_route('/cerberus_status', CerberusStatus(db))
